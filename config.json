@@ -1,8 +1,0 @@
-{
-    "bindTo": ":8080",
-    "publicUrl": "http://localhost:8080",
-    "apiPrefix": "/file-share-v1",
-    "storage": "./storage",
-    "loglevel": "info",
-    "gcInterval": 60
-}
