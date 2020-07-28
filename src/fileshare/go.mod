@@ -1,4 +1,4 @@
-module github.com/protopopov1122/fileshare
+module github.com/protopopov1122/file-share/src/fileshare
 
 go 1.14
 

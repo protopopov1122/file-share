@@ -15,47 +15,34 @@
    IN THE SOFTWARE.
 */
 
-package fileshare
+package main
 
 import (
-	"io/ioutil"
-	"log"
+	"fmt"
 	"os"
+	"strconv"
+
+	uploaderLib "github.com/protopopov1122/file-share/src/uploader/lib"
 )
 
-// Logging contains loggers for different verbosity levels
-type Logging struct {
-	Debug   *log.Logger
-	Info    *log.Logger
-	Warning *log.Logger
-}
-
-// LogLevel defines possible logging levels
-type LogLevel string
-
-const (
-	// Debug includes everything
-	Debug = "debug"
-	// Info includes everything up to informational messages
-	Info = "info"
-	// Warning includes only warnings and errors
-	Warning = "warning"
-)
-
-// NewLogging constructs loggers according to specified level
-func NewLogging(level LogLevel) *Logging {
-	flags := log.Ltime | log.Lshortfile | log.Ldate
-	logging := &Logging{
-		Debug:   log.New(ioutil.Discard, " [ debug ] ", flags),
-		Info:    log.New(ioutil.Discard, " [ info  ] ", flags),
-		Warning: log.New(os.Stdout, " [warning] ", flags),
+func main() {
+	if len(os.Args) < 3 {
+		fmt.Println("Misconfigured: provide upload parameters")
+		os.Exit(1)
 	}
-	switch level {
-	case Debug:
-		logging.Debug.SetOutput(os.Stdout)
-		fallthrough
-	case Info:
-		logging.Info.SetOutput(os.Stdout)
+	lifetime, err := strconv.ParseUint(os.Args[2], 10, 32)
+	if err != nil {
+		fmt.Println("Failed to parse lifetime parameter due to", err)
+		os.Exit(1)
 	}
-	return logging
+	uploader := uploaderLib.Uploader{
+		APIURL:   os.Args[1],
+		Lifetime: uint(lifetime),
+	}
+	res, err := uploader.Upload(os.Stdin, "file")
+	if err != nil {
+		fmt.Println("Failed to upload file due to ", err)
+	} else {
+		fmt.Println("Uploaded file available at", res, "for", uploader.Lifetime, "second(s)")
+	}
 }

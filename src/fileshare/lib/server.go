@@ -15,7 +15,7 @@
    IN THE SOFTWARE.
 */
 
-package fileshare
+package lib
 
 import (
 	"fmt"

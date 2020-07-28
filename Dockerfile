@@ -12,10 +12,8 @@ RUN mkdir -p /file-share/storage
 # Build project
 WORKDIR /file-share/build
 COPY src ./src
-COPY go.mod .
-COPY go.sum .
-RUN go mod download
-RUN go build -o ../dist/file-share ./src/main
+RUN cd ./src/fileshare && go mod download
+RUN cd ./src/fileshare && go build -o /file-share/dist/file-share ./main
 RUN rm -rf /file-share/build
 COPY src/startup.sh /file-share/dist
 

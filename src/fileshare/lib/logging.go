@@ -15,52 +15,47 @@
    IN THE SOFTWARE.
 */
 
-package main
+package lib
 
 import (
-	"encoding/json"
 	"io/ioutil"
 	"log"
 	"os"
-
-	"github.com/protopopov1122/fileshare/src/fileshare"
 )
 
-func loadConfig(params *fileshare.Params, config string) error {
-	jsonFile, err := os.Open(config)
-	if err != nil {
-		return err
-	}
-	defer jsonFile.Close()
-	jsonContent, err := ioutil.ReadAll(jsonFile)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(jsonContent, params)
+// Logging contains loggers for different verbosity levels
+type Logging struct {
+	Debug   *log.Logger
+	Info    *log.Logger
+	Warning *log.Logger
 }
 
-func main() {
-	params := &fileshare.Params{
-		Address:                   ":8080",
-		PublicURL:                 "http://localhost:8080",
-		APIPathPrefix:             "/file-share-v1",
-		Storage:                   "./storage",
-		LoggingLevel:              "debug",
-		GarbageCollectionInterval: 60,
+// LogLevel defines possible logging levels
+type LogLevel string
+
+const (
+	// Debug includes everything
+	Debug = "debug"
+	// Info includes everything up to informational messages
+	Info = "info"
+	// Warning includes only warnings and errors
+	Warning = "warning"
+)
+
+// NewLogging constructs loggers according to specified level
+func NewLogging(level LogLevel) *Logging {
+	flags := log.Ltime | log.Lshortfile | log.Ldate
+	logging := &Logging{
+		Debug:   log.New(ioutil.Discard, " [ debug ] ", flags),
+		Info:    log.New(ioutil.Discard, " [ info  ] ", flags),
+		Warning: log.New(os.Stdout, " [warning] ", flags),
 	}
-	if len(os.Args) > 1 {
-		err := loadConfig(params, os.Args[1])
-		if err != nil {
-			log.Fatal("Failed to load configuration due to ", err)
-		}
-		log.Println("Loaded configuration from", os.Args[1])
+	switch level {
+	case Debug:
+		logging.Debug.SetOutput(os.Stdout)
+		fallthrough
+	case Info:
+		logging.Info.SetOutput(os.Stdout)
 	}
-	srv, err := fileshare.NewServer(params)
-	if err != nil {
-		log.Fatal("Failed to initialize file share server due to ", err)
-		return
-	}
-	defer srv.Close()
-	srv.Setup()
-	srv.Log.Warning.Fatal("Failed to start file share server due to ", srv.Start())
+	return logging
 }
