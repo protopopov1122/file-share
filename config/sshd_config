@@ -111,6 +111,9 @@ X11Forwarding no
 
 AllowUsers upload
 
+Match User upload
+    ForceCommand /file-share/dist/uploader "http://localhost:8080/file-share-v1" 60
+
 # Example of overriding settings on a per-user basis
 #Match User anoncvs
 #	X11Forwarding no

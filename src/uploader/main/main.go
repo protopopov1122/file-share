@@ -21,9 +21,19 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	uploaderLib "github.com/protopopov1122/file-share/src/uploader/lib"
 )
+
+func getFilename() string {
+	originalCmd := os.Getenv("SSH_ORIGINAL_COMMAND")
+	if len(originalCmd) == 0 {
+		return "file"
+	} else {
+		return strings.Fields(originalCmd)[0]
+	}
+}
 
 func main() {
 	if len(os.Args) < 3 {
@@ -39,7 +49,7 @@ func main() {
 		APIURL:   os.Args[1],
 		Lifetime: uint(lifetime),
 	}
-	res, err := uploader.Upload(os.Stdin, "file")
+	res, err := uploader.Upload(os.Stdin, getFilename())
 	if err != nil {
 		fmt.Println("Failed to upload file due to ", err)
 	} else {

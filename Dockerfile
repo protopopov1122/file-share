@@ -17,6 +17,8 @@ WORKDIR /file-share/build
 COPY src ./src
 RUN cd ./src/fileshare && go mod download
 RUN cd ./src/fileshare && go build -o /file-share/dist/file-share ./main
+RUN cd ./src/uploader && go mod download
+RUN cd ./src/uploader && go build -o /file-share/dist/uploader ./main
 RUN rm -rf /file-share/build
 COPY src/startup.sh /file-share/dist
 
