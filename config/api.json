@@ -1,6 +1,6 @@
 {
     "bindTo": "localhost:8080",
-    "publicUrl": "http://localhost:8081",
+    "publicUrl": "http://localhost:8080",
     "apiPrefix": "/file-share-v1",
     "storage": "/file-share/storage",
     "loglevel": "info",

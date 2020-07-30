@@ -22,6 +22,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	uploaderLib "github.com/protopopov1122/file-share/src/uploader/lib"
 )
@@ -29,7 +30,7 @@ import (
 func getFilename() string {
 	originalCmd := os.Getenv("SSH_ORIGINAL_COMMAND")
 	if len(originalCmd) == 0 {
-		return "file"
+		return strconv.FormatInt(time.Now().UTC().Unix(), 10)
 	} else {
 		return strings.Fields(originalCmd)[0]
 	}

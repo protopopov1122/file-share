@@ -39,4 +39,4 @@ RUN ssh-keygen -A
 COPY config/keys/* /file-share/config/persistent/keys
 
 WORKDIR /file-share/dist
-# ENTRYPOINT ["/file-share/dist/startup.sh"]
+ENTRYPOINT ["/file-share/dist/startup.sh"]
