@@ -24,13 +24,15 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/spf13/afero"
+
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3" // sqlite3 database driver
 )
 
 // Storage manages file share storage index and contents
 type Storage struct {
 	database    *sql.DB
+	fs          afero.Fs
 	storagePath string
 	log         *Logging
 }
@@ -44,13 +46,8 @@ type FileDescriptor struct {
 }
 
 // NewStorage constructs new file share storage object
-func NewStorage(path string, log *Logging) (*Storage, error) {
-	storagePath := filepath.Join(path, "files")
-	err := os.MkdirAll(storagePath, os.ModePerm)
-	if err != nil {
-		return nil, err
-	}
-	database, err := sql.Open("sqlite3", filepath.Join(path, "index.db"))
+func NewStorage(database *sql.DB, fs afero.Fs, storagePath string, log *Logging) (*Storage, error) {
+	err := fs.MkdirAll(storagePath, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
@@ -65,15 +62,19 @@ func NewStorage(path string, log *Logging) (*Storage, error) {
 	}
 	return &Storage{
 		database:    database,
+		fs:          fs,
 		storagePath: storagePath,
 		log:         log,
 	}, nil
 }
 
 // Close destroys database connection
-func (index *Storage) Close() {
-	index.database.Close()
-	index.database = nil
+func (index *Storage) Close() error {
+	err := index.database.Close()
+	if err == nil {
+		index.database = nil
+	}
+	return err
 }
 
 // New uploads new file into file share storage
@@ -96,7 +97,7 @@ func (index *Storage) New(lifetime int64, source io.Reader, name string) (string
 		index.log.Warning.Println("Uploading file", name, "failed due to", err)
 		return "", err
 	}
-	destination, err := os.OpenFile(filepath.Join(index.storagePath, id.String()), os.O_WRONLY|os.O_CREATE, 0600)
+	destination, err := index.fs.OpenFile(filepath.Join(index.storagePath, id.String()), os.O_WRONLY|os.O_CREATE, 0600)
 	if err != nil {
 		index.log.Warning.Println("Uploading file", name, "failed due to", err)
 		return "", err
@@ -178,7 +179,7 @@ func (index *Storage) CollectGarbage() error {
 	}
 	index.log.Debug.Println("Starting obsolete file removal")
 	var removalCounter uint = 0
-	err = filepath.Walk(index.storagePath, func(path string, info os.FileInfo, err error) error {
+	err = afero.Walk(index.fs, index.storagePath, func(path string, info os.FileInfo, err error) error {
 		if path == index.storagePath {
 			return nil
 		}
@@ -188,7 +189,7 @@ func (index *Storage) CollectGarbage() error {
 		}
 		defer res.Close()
 		if !res.Next() {
-			err = os.Remove(path)
+			err = index.fs.Remove(path)
 			if err == nil {
 				removalCounter++
 			}

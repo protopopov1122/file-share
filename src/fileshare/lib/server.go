@@ -18,11 +18,16 @@
 package lib
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
+	"path/filepath"
+
+	"github.com/spf13/afero"
 
 	"github.com/gorilla/mux"
 	"github.com/jasonlvhit/gocron"
+	_ "github.com/mattn/go-sqlite3" // sqlite3 database driver
 )
 
 // Params structure contains global parameters for file share
@@ -49,7 +54,12 @@ type Server struct {
 func NewServer(params *Params) (*Server, error) {
 	logging := NewLogging(params.LoggingLevel)
 	logging.Debug.Println("File share server initialization: serving", params.Storage, "on", params.Address)
-	storageIndex, err := NewStorage(params.Storage, logging)
+	database, err := sql.Open("sqlite3", filepath.Join(params.Storage, "index.db"))
+	if err != nil {
+		logging.Warning.Println("Failed to initialize index database due to", err)
+		return nil, err
+	}
+	storageIndex, err := NewStorage(database, afero.NewOsFs(), filepath.Join(params.Storage, "files"), logging)
 	if err != nil {
 		logging.Warning.Println("Failed to initialize storage due to", err)
 		return nil, err

@@ -40,6 +40,8 @@ const (
 	Info = "info"
 	// Warning includes only warnings and errors
 	Warning = "warning"
+	// None suppresses all logging
+	None = "none"
 )
 
 // NewLogging constructs loggers according to specified level
@@ -48,7 +50,7 @@ func NewLogging(level LogLevel) *Logging {
 	logging := &Logging{
 		Debug:   log.New(ioutil.Discard, " [ debug ] ", flags),
 		Info:    log.New(ioutil.Discard, " [ info  ] ", flags),
-		Warning: log.New(os.Stdout, " [warning] ", flags),
+		Warning: log.New(ioutil.Discard, " [warning] ", flags),
 	}
 	switch level {
 	case Debug:
@@ -56,6 +58,9 @@ func NewLogging(level LogLevel) *Logging {
 		fallthrough
 	case Info:
 		logging.Info.SetOutput(os.Stdout)
+		fallthrough
+	case Warning:
+		logging.Warning.SetOutput(os.Stdout)
 	}
 	return logging
 }
