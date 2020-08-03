@@ -77,35 +77,40 @@ func (index *Storage) Close() error {
 	return err
 }
 
-// New uploads new file into file share storage
-func (index *Storage) New(lifetime int64, source io.Reader, name string) (string, error) {
+func (index *Storage) uploadNew(lifetime int64, source io.Reader, name string) (string, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
-		index.log.Warning.Println("Uploading file", name, "failed due to", err)
 		return "", err
 	}
 	now := time.Now().UTC().Unix()
 	expiry := now + lifetime
 	statement, err := index.database.Prepare("INSERT INTO SharedFiles VALUES (?, ?, ?)")
 	if err != nil {
-		index.log.Warning.Println("Uploading file", name, "failed due to", err)
 		return "", err
 	}
 	defer statement.Close()
 	_, err = statement.Exec(id.String(), expiry, name)
 	if err != nil {
-		index.log.Warning.Println("Uploading file", name, "failed due to", err)
 		return "", err
 	}
 	destination, err := index.fs.OpenFile(filepath.Join(index.storagePath, id.String()), os.O_WRONLY|os.O_CREATE, 0600)
 	if err != nil {
-		index.log.Warning.Println("Uploading file", name, "failed due to", err)
 		return "", err
 	}
 	defer destination.Close()
 	io.Copy(destination, source)
-	index.log.Info.Println("Saved file", name, "as", id.String(), "with lifetime", lifetime, "second(s)")
 	return id.String(), nil
+}
+
+// New creates an index database entry and saves file
+func (index *Storage) New(lifetime int64, source io.Reader, name string) (string, error) {
+	id, err := index.uploadNew(lifetime, source, name)
+	if err != nil {
+		index.log.Warning.Println("Uploading file", name, "failed due to", err)
+	} else {
+		index.log.Info.Println("Saved file", name, "as", id, "with lifetime", lifetime, "second(s)")
+	}
+	return id, err
 }
 
 // Get searches file by UUID and returns a file descriptor
@@ -144,42 +149,35 @@ func (index *Storage) Count() (int, error) {
 	return count, nil
 }
 
-// CollectGarbage removes obsolete database records and cleans up storage
-func (index *Storage) CollectGarbage() error {
-	index.log.Debug.Println("Starting database cleanup")
+func (index *Storage) dropOldEntries() (int, int, error) {
 	initialCount, _ := index.Count()
 	now := time.Now().UTC().Unix()
 	tx, err := index.database.Begin()
 	if err != nil {
-		index.log.Warning.Println("Database cleanup failed due to", err)
-		return err
+		return -1, -1, err
 	}
 	res, err := tx.Prepare("DELETE FROM SharedFiles WHERE expires < ?")
 	if err != nil {
 		tx.Rollback()
-		index.log.Warning.Println("Database cleanup failed due to", err)
-		return err
+		return -1, -1, err
 	}
 	defer res.Close()
 	_, err = res.Exec(now)
 	if err != nil {
 		tx.Rollback()
-		index.log.Warning.Println("Database cleanup failed due to", err)
-		return err
+		return -1, -1, err
 	}
 	err = tx.Commit()
 	if err != nil {
-		index.log.Warning.Println("Database cleanup failed due to", err)
+		return -1, -1, err
 	}
 	finalCount, _ := index.Count()
-	if initialCount > 0 && finalCount >= 0 && finalCount < initialCount {
-		index.log.Info.Println("Database cleanup finished;", initialCount-finalCount, "record(s) removed")
-	} else {
-		index.log.Info.Println("Database cleanup finished")
-	}
-	index.log.Debug.Println("Starting obsolete file removal")
+	return initialCount, finalCount, err
+}
+
+func (index *Storage) dropObsoleteFiles() (uint, error) {
 	var removalCounter uint = 0
-	err = afero.Walk(index.fs, index.storagePath, func(path string, info os.FileInfo, err error) error {
+	err := afero.Walk(index.fs, index.storagePath, func(path string, info os.FileInfo, err error) error {
 		if path == index.storagePath {
 			return nil
 		}
@@ -196,6 +194,23 @@ func (index *Storage) CollectGarbage() error {
 		}
 		return err
 	})
+	return removalCounter, err
+}
+
+// CollectGarbage removes obsolete database records and cleans up storage
+func (index *Storage) CollectGarbage() error {
+	index.log.Debug.Println("Starting database cleanup")
+	initialCount, finalCount, err := index.dropOldEntries()
+	if err != nil {
+		index.log.Warning.Println("Database cleanup failed due to", err)
+	}
+	if initialCount > 0 && finalCount >= 0 && finalCount < initialCount {
+		index.log.Info.Println("Database cleanup finished;", initialCount-finalCount, "record(s) removed")
+	} else {
+		index.log.Info.Println("Database cleanup finished")
+	}
+	index.log.Debug.Println("Starting obsolete file removal")
+	removalCounter, err := index.dropObsoleteFiles()
 	if err != nil {
 		index.log.Warning.Println("Obsolete file removal failed due to", err)
 	}

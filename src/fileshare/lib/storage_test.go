@@ -18,9 +18,16 @@
 package lib
 
 import (
+	"bytes"
 	"database/sql"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"reflect"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3" // sqlite3 database driver
 	"github.com/spf13/afero"
 )
@@ -96,5 +103,82 @@ func TestNewStorage(t *testing.T) {
 	}
 	if !res {
 		t.Error("Expected", FilePath, "to exist")
+	}
+	count, err := storage.Count()
+	if err != nil {
+		t.Error("Failed to retrieve storage size due to", err)
+	}
+	if count > 0 {
+		t.Errorf("Expected storage to be empty; got %d entires", count)
+	}
+}
+
+func TestNonExistentFile(t *testing.T) {
+	storage := makeStorage(t)
+	defer storage.Close()
+	res, err := storage.Get("SomeUUID")
+	if err != os.ErrNotExist {
+		t.Errorf("Expected err=%s, res=nil; got err=%s, res=%p", os.ErrNotExist, err, res)
+	}
+}
+
+func TestNewFileUpload(t *testing.T) {
+	storage := makeStorage(t)
+	defer storage.Close()
+	content := []byte{
+		0, 1, 2, 3, 5, 8,
+		13, 21, 34, 56,
+	}
+	now := time.Now().UTC().Unix()
+	uuidVal, err := storage.New(120, bytes.NewReader(content), "file1")
+	if err != nil {
+		t.Error("Failed to upload file due to", err)
+	}
+	_, err = uuid.Parse(uuidVal)
+	if err != nil {
+		t.Errorf("Failed to parse returned uuid=%s", uuidVal)
+	}
+	count, err := storage.Count()
+	if err != nil {
+		t.Error("Failed to retrieve entry count due to", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected count=1; got count=%d", count)
+	}
+	file, err := storage.Get(uuidVal)
+	if err != nil {
+		t.Error("Failed to retrieve file due to", err)
+	}
+	if file.name != "file1" {
+		t.Errorf("Expected name='file1'; got='%s'", file.name)
+	}
+	if file.uuid != uuidVal {
+		t.Errorf("Expected uuid='%s'; got uuid='%s'", uuidVal, file.uuid)
+	}
+	expectedPath := filepath.Join(FilePath, uuidVal)
+	if file.path != expectedPath {
+		t.Errorf("Expected path='%s'; got path='%s'", expectedPath, file.path)
+	}
+	exists, err := afero.Exists(storage.fs, expectedPath)
+	if err != nil {
+		t.Errorf("Failed to check whether '%s' exists due to %s", expectedPath, err)
+	}
+	if !exists {
+		t.Errorf("Expected '%s' to exist", expectedPath)
+	}
+	if file.expires < now {
+		t.Errorf("Expected expiry time=%d to be greater or equal to now=%d", file.expires, now)
+	}
+	fileReader, err := storage.fs.OpenFile(file.path, os.O_RDONLY, 0)
+	if err != nil {
+		t.Error("Failed to open file due to", err)
+	}
+	defer fileReader.Close()
+	fileContent, err := ioutil.ReadAll(fileReader)
+	if err != nil {
+		t.Error("Failed to read file content due to", err)
+	}
+	if !reflect.DeepEqual(content, fileContent) {
+		t.Error("File content does not match to expected")
 	}
 }
