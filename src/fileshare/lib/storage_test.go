@@ -20,6 +20,7 @@ package lib
 import (
 	"bytes"
 	"database/sql"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -180,5 +181,50 @@ func TestNewFileUpload(t *testing.T) {
 	}
 	if !reflect.DeepEqual(content, fileContent) {
 		t.Error("File content does not match to expected")
+	}
+}
+
+func TestMultipleFileUpload(t *testing.T) {
+	storage := makeStorage(t)
+	defer storage.Close()
+	contents := [][]byte{
+		{1, 2, 3, 4},
+		{},
+		{200, 100, 64, 65, 88, 0, 1, 5},
+		{5},
+	}
+	uuids := []string{}
+	for idx, content := range contents {
+		uuid, err := storage.New(60, bytes.NewReader(content), fmt.Sprintf("file%d", idx))
+		if err != nil {
+			t.Errorf("Failed to upload file #%d due to %s", idx, err)
+		}
+		uuids = append(uuids, uuid)
+	}
+	count, err := storage.Count()
+	if err != nil {
+		t.Error("Failed to retrieve file count due to", err)
+	}
+	if count != len(contents) {
+		t.Errorf("Expected count=%d; got count=%d", len(contents), count)
+	}
+	for idx, uuid := range uuids {
+		file, err := storage.Get(uuid)
+		if err != nil {
+			t.Errorf("Failed to get %s due to %s", uuid, err)
+		}
+		fileReader, err := storage.fs.OpenFile(file.path, os.O_RDONLY, 0)
+		if err != nil {
+			t.Errorf("Failed to open file %s due to %s", file.path, err)
+		}
+		defer fileReader.Close()
+		fileContent, err := ioutil.ReadAll(fileReader)
+		if err != nil {
+			t.Errorf("Failed to read file %s content due to %s", file.path, err)
+		}
+		if !reflect.DeepEqual(contents[idx], fileContent) {
+			t.Errorf("File %s content does not match to expected", file.path)
+		}
+
 	}
 }
