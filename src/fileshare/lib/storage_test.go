@@ -26,7 +26,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3" // sqlite3 database driver
@@ -45,12 +44,20 @@ func constructMocks() (*sql.DB, afero.Fs, *Logging, error) {
 
 const FilePath = "/tmp/files"
 
-func makeStorage(t *testing.T) *Storage {
+type fixedTime struct {
+	Value int64
+}
+
+func (ftime fixedTime) UTCNow() int64 {
+	return ftime.Value
+}
+
+func makeStorage(t *testing.T, time Time) *Storage {
 	db, fs, logging, err := constructMocks()
 	if err != nil {
 		t.Error("Failed to contruct mocks due to", err)
 	}
-	storage, err := NewStorage(db, fs, FilePath, logging)
+	storage, err := NewStorage(db, fs, FilePath, time, logging)
 	if err != nil {
 		t.Error("Failed to construct storage due to", err)
 	}
@@ -95,7 +102,10 @@ func testDbSchema(t *testing.T, db *sql.DB) {
 }
 
 func TestNewStorage(t *testing.T) {
-	storage := makeStorage(t)
+	time := fixedTime{
+		Value: 0,
+	}
+	storage := makeStorage(t, &time)
 	defer storage.Close()
 	testDbSchema(t, storage.database)
 	res, err := afero.Exists(storage.fs, FilePath)
@@ -115,7 +125,10 @@ func TestNewStorage(t *testing.T) {
 }
 
 func TestNonExistentFile(t *testing.T) {
-	storage := makeStorage(t)
+	time := fixedTime{
+		Value: 0,
+	}
+	storage := makeStorage(t, &time)
 	defer storage.Close()
 	res, err := storage.Get("SomeUUID")
 	if err != os.ErrNotExist {
@@ -124,13 +137,15 @@ func TestNonExistentFile(t *testing.T) {
 }
 
 func TestNewFileUpload(t *testing.T) {
-	storage := makeStorage(t)
+	time := fixedTime{
+		Value: 10,
+	}
+	storage := makeStorage(t, &time)
 	defer storage.Close()
 	content := []byte{
 		0, 1, 2, 3, 5, 8,
 		13, 21, 34, 56,
 	}
-	now := time.Now().UTC().Unix()
 	uuidVal, err := storage.New(120, bytes.NewReader(content), "file1")
 	if err != nil {
 		t.Error("Failed to upload file due to", err)
@@ -167,8 +182,8 @@ func TestNewFileUpload(t *testing.T) {
 	if !exists {
 		t.Errorf("Expected '%s' to exist", expectedPath)
 	}
-	if file.expires < now {
-		t.Errorf("Expected expiry time=%d to be greater or equal to now=%d", file.expires, now)
+	if file.expires != 130 {
+		t.Errorf("Expected expiry time=%d to be equal to %d", file.expires, 130)
 	}
 	fileReader, err := storage.fs.OpenFile(file.path, os.O_RDONLY, 0)
 	if err != nil {
@@ -185,7 +200,10 @@ func TestNewFileUpload(t *testing.T) {
 }
 
 func TestMultipleFileUpload(t *testing.T) {
-	storage := makeStorage(t)
+	time := fixedTime{
+		Value: 0,
+	}
+	storage := makeStorage(t, &time)
 	defer storage.Close()
 	contents := [][]byte{
 		{1, 2, 3, 4},
@@ -195,6 +213,7 @@ func TestMultipleFileUpload(t *testing.T) {
 	}
 	uuids := []string{}
 	for idx, content := range contents {
+		time.Value = int64(idx)
 		uuid, err := storage.New(60, bytes.NewReader(content), fmt.Sprintf("file%d", idx))
 		if err != nil {
 			t.Errorf("Failed to upload file #%d due to %s", idx, err)
@@ -213,6 +232,9 @@ func TestMultipleFileUpload(t *testing.T) {
 		if err != nil {
 			t.Errorf("Failed to get %s due to %s", uuid, err)
 		}
+		if file.expires != int64(idx)+60 {
+			t.Errorf("Expected expiry time=%d to be equal to %d", file.expires, idx+60)
+		}
 		fileReader, err := storage.fs.OpenFile(file.path, os.O_RDONLY, 0)
 		if err != nil {
 			t.Errorf("Failed to open file %s due to %s", file.path, err)
@@ -225,6 +247,62 @@ func TestMultipleFileUpload(t *testing.T) {
 		if !reflect.DeepEqual(contents[idx], fileContent) {
 			t.Errorf("File %s content does not match to expected", file.path)
 		}
+	}
+}
 
+func TestGarbageCollection(t *testing.T) {
+	time := fixedTime{
+		Value: 0,
+	}
+	storage := makeStorage(t, &time)
+	defer storage.Close()
+	contents := [][]byte{
+		{1, 2, 3, 4},
+		{},
+		{200, 100, 64, 65, 88, 0, 1, 5},
+		{5},
+	}
+	uuids := []string{}
+	for idx, content := range contents {
+		time.Value = int64(idx)
+		uuid, err := storage.New(int64(idx*10)+10, bytes.NewReader(content), fmt.Sprintf("file%d", idx))
+		if err != nil {
+			t.Errorf("Failed to upload file #%d due to %s", idx, err)
+		}
+		uuids = append(uuids, uuid)
+	}
+	count, err := storage.Count()
+	if err != nil {
+		t.Error("Failed to retrieve file count due to", err)
+	}
+	if count != len(contents) {
+		t.Errorf("Expected count=%d; got count=%d", len(contents), count)
+	}
+	err = storage.CollectGarbage()
+	if err != nil {
+		t.Error("Failed to collect garbage due to", err)
+	}
+	for idx, uuid := range uuids {
+		_, err := storage.Get(uuid)
+		if err != nil {
+			t.Errorf("Failed to locate %s due to %s", uuid, err)
+		}
+		time.Value = int64(idx*10 + 15)
+		err = storage.CollectGarbage()
+		if err != nil {
+			t.Error("Failed to collect garbage due to", err)
+		}
+		_, err = storage.Get(uuid)
+		if err != os.ErrNotExist {
+			t.Errorf("Expected %s to not exist; got %s instead", uuid, err)
+		}
+		count, err := storage.Count()
+		if err != nil {
+			t.Errorf("Failed to get entry count due to %s", err)
+		}
+		expectedCount := len(uuids) - idx - 1
+		if count != expectedCount {
+			t.Errorf("Expected count=%d; got count=%d instead", expectedCount, count)
+		}
 	}
 }

@@ -22,18 +22,23 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/spf13/afero"
 
 	"github.com/google/uuid"
 )
 
+// Time provides information about current time
+type Time interface {
+	UTCNow() int64
+}
+
 // Storage manages file share storage index and contents
 type Storage struct {
 	database    *sql.DB
 	fs          afero.Fs
 	storagePath string
+	time        Time
 	log         *Logging
 }
 
@@ -46,7 +51,7 @@ type FileDescriptor struct {
 }
 
 // NewStorage constructs new file share storage object
-func NewStorage(database *sql.DB, fs afero.Fs, storagePath string, log *Logging) (*Storage, error) {
+func NewStorage(database *sql.DB, fs afero.Fs, storagePath string, time Time, log *Logging) (*Storage, error) {
 	err := fs.MkdirAll(storagePath, os.ModePerm)
 	if err != nil {
 		return nil, err
@@ -64,6 +69,7 @@ func NewStorage(database *sql.DB, fs afero.Fs, storagePath string, log *Logging)
 		database:    database,
 		fs:          fs,
 		storagePath: storagePath,
+		time:        time,
 		log:         log,
 	}, nil
 }
@@ -82,7 +88,7 @@ func (index *Storage) uploadNew(lifetime int64, source io.Reader, name string) (
 	if err != nil {
 		return "", err
 	}
-	now := time.Now().UTC().Unix()
+	now := index.time.UTCNow()
 	expiry := now + lifetime
 	statement, err := index.database.Prepare("INSERT INTO SharedFiles VALUES (?, ?, ?)")
 	if err != nil {
@@ -151,7 +157,7 @@ func (index *Storage) Count() (int, error) {
 
 func (index *Storage) dropOldEntries() (int, int, error) {
 	initialCount, _ := index.Count()
-	now := time.Now().UTC().Unix()
+	now := index.time.UTCNow()
 	tx, err := index.database.Begin()
 	if err != nil {
 		return -1, -1, err

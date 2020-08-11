@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/afero"
 
@@ -50,6 +51,12 @@ type Server struct {
 	scheduler    *gocron.Scheduler
 }
 
+type systemTime struct{}
+
+func (systime systemTime) UTCNow() int64 {
+	return time.Now().UTC().Unix()
+}
+
 // NewServer constructs new file share server
 func NewServer(params *Params) (*Server, error) {
 	logging := NewLogging(params.LoggingLevel)
@@ -59,7 +66,7 @@ func NewServer(params *Params) (*Server, error) {
 		logging.Warning.Println("Failed to initialize index database due to", err)
 		return nil, err
 	}
-	storageIndex, err := NewStorage(database, afero.NewOsFs(), filepath.Join(params.Storage, "files"), logging)
+	storageIndex, err := NewStorage(database, afero.NewOsFs(), filepath.Join(params.Storage, "files"), systemTime{}, logging)
 	if err != nil {
 		logging.Warning.Println("Failed to initialize storage due to", err)
 		return nil, err
