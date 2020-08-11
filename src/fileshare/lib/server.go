@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -59,7 +60,7 @@ func (systime systemTime) UTCNow() int64 {
 
 // NewServer constructs new file share server
 func NewServer(params *Params) (*Server, error) {
-	logging := NewLogging(params.LoggingLevel)
+	logging := NewLogging(params.LoggingLevel, os.Stdout)
 	logging.Debug.Println("File share server initialization: serving", params.Storage, "on", params.Address)
 	database, err := sql.Open("sqlite3", filepath.Join(params.Storage, "index.db"))
 	if err != nil {

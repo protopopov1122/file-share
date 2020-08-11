@@ -38,7 +38,7 @@ func constructMocks() (*sql.DB, afero.Fs, *Logging, error) {
 		return nil, nil, nil, err
 	}
 	fs := afero.NewMemMapFs()
-	logging := NewLogging("none")
+	logging := NewLogging("none", ioutil.Discard)
 	return database, fs, logging, nil
 }
 

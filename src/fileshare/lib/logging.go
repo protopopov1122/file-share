@@ -18,9 +18,9 @@
 package lib
 
 import (
+	"io"
 	"io/ioutil"
 	"log"
-	"os"
 )
 
 // Logging contains loggers for different verbosity levels
@@ -45,7 +45,7 @@ const (
 )
 
 // NewLogging constructs loggers according to specified level
-func NewLogging(level LogLevel) *Logging {
+func NewLogging(level LogLevel, output io.Writer) *Logging {
 	flags := log.Ltime | log.Lshortfile | log.Ldate
 	logging := &Logging{
 		Debug:   log.New(ioutil.Discard, " [ debug ] ", flags),
@@ -54,13 +54,13 @@ func NewLogging(level LogLevel) *Logging {
 	}
 	switch level {
 	case Debug:
-		logging.Debug.SetOutput(os.Stdout)
+		logging.Debug.SetOutput(output)
 		fallthrough
 	case Info:
-		logging.Info.SetOutput(os.Stdout)
+		logging.Info.SetOutput(output)
 		fallthrough
 	case Warning:
-		logging.Warning.SetOutput(os.Stdout)
+		logging.Warning.SetOutput(output)
 	}
 	return logging
 }
