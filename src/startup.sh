@@ -37,7 +37,15 @@ echo > "$FS_USER/.ssh/authorized_keys"
 add_keys "$FS_CONFIG_PERSISTENT/keys"
 add_keys "$FS_CONFIG_RUNTIME/keys"
 
+function stopService {
+    /usr/bin/pkill -SIGINT -f supervisord
+    exit 0
+}
+
+trap stopService SIGINT
+
 # Start applications
 /usr/bin/supervisord >/dev/null 2>&1
 /usr/bin/supervisorctl status all
-/usr/bin/supervisorctl tail -f file-share
+/usr/bin/supervisorctl tail -f file-share &
+wait

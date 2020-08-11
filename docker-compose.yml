@@ -8,3 +8,4 @@ services:
       - "${SHARE_UPLOAD_PORT}:22"
     volumes:
       - "${SHARE_STORAGE}:/file-share/storage"
+    stop_signal: SIGINT

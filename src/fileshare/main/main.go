@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 
 	fileshare "github.com/protopopov1122/file-share/src/fileshare/lib"
 )
@@ -37,6 +38,17 @@ func loadConfig(params *fileshare.Params, config string) error {
 		return err
 	}
 	return json.Unmarshal(jsonContent, params)
+}
+
+func serverShutdownListener(sigCh chan os.Signal, srv *fileshare.Server) {
+	signal.Notify(sigCh, os.Interrupt)
+	for sig := range sigCh {
+		if sig == os.Interrupt {
+			srv.Log.Info.Println("Received interrupt, shutting down share server")
+			srv.Close()
+			break
+		}
+	}
 }
 
 func main() {
@@ -62,5 +74,7 @@ func main() {
 	}
 	defer srv.Close()
 	srv.Setup()
-	srv.Log.Warning.Fatal("Failed to start file share server due to ", srv.Start())
+	sigCh := make(chan os.Signal, 1)
+	go serverShutdownListener(sigCh, srv)
+	srv.Log.Warning.Fatal("Server start method exited with", srv.Start())
 }
